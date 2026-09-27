@@ -1,0 +1,82 @@
+name: Test USD Price
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get USD price
+        run: |
+          python3 - <<'PY'
+          import urllib.request
+          import re
+
+          url = "https://www.tgju.org/profile/price_dollar_rl"
+
+          request = urllib.request.Request(
+              url,
+              headers={
+                  "User-Agent": "Mozilla/5.0"
+              }
+          )
+
+          with urllib.request.urlopen(
+              request,
+              timeout=30
+          ) as response:
+              html = response.read().decode(
+                  "utf-8",
+                  errors="ignore"
+              )
+
+          print("Page downloaded.")
+          print("Page size:", len(html))
+
+          # پیدا کردن data-field مربوط به دلار
+          pattern = (
+              r'data-field=["\']price_dollar_rl["\']'
+              r'[^>]*'
+              r'data-value=["\']([^"\']+)["\']'
+          )
+
+          match = re.search(
+              pattern,
+              html,
+              re.IGNORECASE
+          )
+
+          if not match:
+              raise Exception(
+                  "USD price not found"
+              )
+
+          raw = match.group(1)
+
+          digits = re.sub(
+              r"[^0-9]",
+              "",
+              raw
+          )
+
+          if not digits:
+              raise Exception(
+                  "USD price is not numeric"
+              )
+
+          rial = int(digits)
+
+          if not 1_000_000 <= rial <= 10_000_000:
+              raise Exception(
+                  f"Invalid USD Rial price: {rial}"
+              )
+
+          toman = round(rial / 10)
+
+          print("==============================")
+          print("USD Rial :", rial)
+          print("USD Toman:", toman)
+          print("==============================")
+          PY
