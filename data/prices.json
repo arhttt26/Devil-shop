@@ -1,7 +1,7 @@
 {
   "usdToman": 10085.0,
-  "gramUsd": 1.58,
-  "updatedAt": "2026-09-28T23:33:35.763011+00:00",
+  "gramUsd": 1.57,
+  "updatedAt": "2026-09-28T23:51:23+00:00",
   "source": "TGJU + CoinGecko + Fragment",
   "fragmentSource": "ApiFragment",
   "starUsd": 0.015,
@@ -21,5 +21,36 @@
       "name": "پریمیوم 1 ساله",
       "usd": 28.99
     }
-  ]
+  ],
+  "sources": {
+    "usd": {
+      "stale": false,
+      "updatedAt": "2026-09-28T23:51:23+00:00"
+    },
+    "gram": {
+      "stale": false,
+      "updatedAt": "2026-09-28T23:51:23+00:00"
+    },
+    "stars": {
+      "failedSince": "2026-09-28T23:51:23+00:00",
+      "error": "HTTP Error 500: Internal Server Error",
+      "stale": false
+    },
+    "prem3m": {
+      "failedSince": "2026-09-28T23:51:23+00:00",
+      "error": "HTTP Error 500: Internal Server Error",
+      "stale": false
+    },
+    "prem6m": {
+      "failedSince": "2026-09-28T23:51:23+00:00",
+      "error": "HTTP Error 500: Internal Server Error",
+      "stale": false
+    },
+    "prem1y": {
+      "failedSince": "2026-09-28T23:51:23+00:00",
+      "error": "HTTP Error 500: Internal Server Error",
+      "stale": false
+    }
+  },
+  "anyStale": false
 }
