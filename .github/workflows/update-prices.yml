@@ -2,7 +2,6 @@ name: Update Prices
 
 on:
   workflow_dispatch:
-
   schedule:
     - cron: "*/15 * * * *"
 
@@ -25,468 +24,194 @@ jobs:
         run: |
           python3 <<'PY'
           import json
-          import os
           import re
-          import time
           import urllib.request
-          import urllib.error
           from datetime import datetime, timezone
 
           FILE = "data/prices.json"
 
           TGJU = "https://www.tgju.org/profile/price_dollar_rl"
-
-          GRAM = (
-              "https://api.coingecko.com/api/v3/simple/price"
-              "?ids=the-open-network&vs_currencies=usd"
-          )
-
+          GRAM = "https://api.coingecko.com/api/v3/simple/price?ids=the-open-network&vs_currencies=usd"
           FRAGMENT = "https://apifragment.online/price"
 
-          HEADERS = {
-              "User-Agent": "Mozilla/5.0",
-              "Accept": "application/json,text/html,*/*"
-          }
-
-          def get(url, headers=None, retries=3):
-              h = dict(HEADERS)
-              if headers:
-                  h.update(headers)
-
-              last = None
-
-              for i in range(retries):
-                  try:
-                      req = urllib.request.Request(
-                          url,
-                          headers=h,
-                          method="GET"
-                      )
-
-                      with urllib.request.urlopen(
-                          req,
-                          timeout=30
-                      ) as r:
-                          return r.read().decode(
-                              "utf-8",
-                              errors="replace"
-                          )
-
-                  except Exception as e:
-                      last = e
-                      print(
-                          f"Request failed "
-                          f"({i + 1}/{retries}): {e}"
-                      )
-
-                      if i < retries - 1:
-                          time.sleep(3)
-
-              raise last
+          def get(url, headers=None):
+              req = urllib.request.Request(
+                  url,
+                  headers=headers or {
+                      "User-Agent": "Mozilla/5.0"
+                  }
+              )
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  return r.read().decode("utf-8", errors="ignore")
 
           def get_json(url, headers=None):
-              return json.loads(
-                  get(
-                      url,
-                      headers=headers
-                  )
-              )
+              return json.loads(get(url, headers))
 
-          def clean_number(value):
-              value = str(value)
+          def number(x):
+              if x is None:
+                  return None
+              x = str(x).replace(",", "").replace("٬", "").strip()
+              try:
+                  return float(x)
+              except:
+                  return None
 
-              value = value.translate(
-                  str.maketrans(
-                      "۰۱۲۳۴۵۶۷۸۹",
-                      "0123456789"
-                  )
-              )
+          with open(FILE, "r", encoding="utf-8") as f:
+              data = json.load(f)
 
-              value = value.replace(",", "")
-              value = value.replace("٬", "")
-              value = value.replace(" ", "")
-              value = value.replace("\u200c", "")
-
-              return value
-
-          # ---------------------------------------------------------
-          # LOAD EXISTING DATA
-          # ---------------------------------------------------------
-
-          with open(
-              FILE,
-              "r",
-              encoding="utf-8"
-          ) as f:
-              prices = json.load(f)
-
-          old_usd = prices.get("usdToman")
-          old_gram = prices.get("gramUsd")
-          old_star = prices.get(
-              "starUsd",
-              0.015
-          )
-          old_premium = prices.get(
-              "premium",
-              []
-          )
+          old_usd = number(data.get("usdToman"))
+          old_gram = number(data.get("gramUsd"))
+          old_star = number(data.get("starUsd"))
 
           print("Old USD/Toman:", old_usd)
-          print("Old GRAM USD:", old_gram)
-          print("Old Stars USD:", old_star)
+          print("Old GRAM:", old_gram)
+          print("Old Stars:", old_star)
 
-          # ---------------------------------------------------------
-          # USD FROM TGJU
-          # ---------------------------------------------------------
-
-          usd_toman = old_usd
-
+          # -------------------------
+          # USD / TOMAN - TGJU
+          # -------------------------
           try:
-              print("\nFetching USD from TGJU...")
-
               html = get(TGJU)
-
-              print(
-                  "TGJU page size:",
-                  len(html)
-              )
 
               candidates = []
 
-              # Method 1:
-              # Search around price_dollar_rl
-              for match in re.finditer(
-                  r"price_dollar_rl",
-                  html,
-                  re.I
-              ):
-                  part = html[
-                      max(0, match.start() - 2000):
-                      match.start() + 5000
-                  ]
+              for match in re.findall(r"\d[\d,٬]{5,}", html):
+                  n = number(match)
+                  if n and 100000 <= n <= 20000000:
+                      candidates.append(n)
 
-                  nums = re.findall(
-                      r"[0-9۰-۹]{1,3}(?:[,٬][0-9۰-۹]{3})+",
-                      part
-                  )
+              candidates = list(set(candidates))
 
-                  for n in nums:
-                      n = clean_number(n)
+              if candidates:
+                  if old_usd:
+                      target = old_usd * 10
+                      rial = min(candidates, key=lambda x: abs(x - target))
+                  else:
+                      rial = candidates[0]
 
-                      try:
-                          value = int(n)
-                      except:
-                          continue
+                  toman = rial / 10
 
-                      if 100000 <= value <= 20000000:
-                          candidates.append(value)
-
-              # Method 2:
-              # Look for "نرخ فعلی"
-              for match in re.finditer(
-                  r"نرخ\s*فعلی",
-                  html,
-                  re.I
-              ):
-                  part = html[
-                      match.start():
-                      match.start() + 3000
-                  ]
-
-                  nums = re.findall(
-                      r"[0-9۰-۹]{1,3}(?:[,٬][0-9۰-۹]{3})+",
-                      part
-                  )
-
-                  for n in nums:
-                      n = clean_number(n)
-
-                      try:
-                          value = int(n)
-                      except:
-                          continue
-
-                      if 100000 <= value <= 20000000:
-                          candidates.append(value)
-
-              # Remove duplicates
-              candidates = list(
-                  dict.fromkeys(candidates)
-              )
-
-              print(
-                  "TGJU candidates:",
-                  candidates[:20]
-              )
-
-              if not candidates:
-                  raise RuntimeError(
-                      "No valid USD value found"
-                  )
-
-              # Prefer a value close to the previous
-              # price if available.
-              if old_usd:
-                  old_rial = old_usd * 10
-
-                  candidates.sort(
-                      key=lambda x: abs(
-                          x - old_rial
-                      )
-                  )
-
-                  usd_rial = candidates[0]
+                  if 10000 <= toman <= 2000000:
+                      data["usdToman"] = round(toman, 2)
+                      print("New USD/Toman:", data["usdToman"])
+                  else:
+                      print("TGJU value failed sanity check")
 
               else:
-                  usd_rial = candidates[0]
-
-              usd_toman = round(
-                  usd_rial / 10
-              )
-
-              # Safety check.
-              if not (
-                  10000 <= usd_toman <= 2000000
-              ):
-                  raise RuntimeError(
-                      f"Invalid USD/Toman: {usd_toman}"
-                  )
-
-              print(
-                  "USD Rial:",
-                  usd_rial
-              )
-
-              print(
-                  "USD Toman:",
-                  usd_toman
-              )
+                  print("No valid USD value found on TGJU")
 
           except Exception as e:
-              print(
-                  "TGJU failed:",
-                  e
-              )
+              print("TGJU ERROR:", e)
+              print("Keeping old USD/Toman")
 
-              print(
-                  "Keeping previous USD/Toman:",
-                  old_usd
-              )
-
-          # ---------------------------------------------------------
-          # GRAM / TONCOIN
-          # ---------------------------------------------------------
-
-          gram_usd = old_gram
-
+          # -------------------------
+          # GRAM / TON
+          # -------------------------
           try:
-              print("\nFetching GRAM...")
+              j = get_json(GRAM)
+              gram = number(j["the-open-network"]["usd"])
 
-              data = get_json(GRAM)
-
-              value = (
-                  data
-                  .get("the-open-network", {})
-                  .get("usd")
-              )
-
-              if value is None:
-                  raise RuntimeError(
-                      "GRAM price missing"
-                  )
-
-              gram_usd = float(value)
-
-              if gram_usd <= 0:
-                  raise RuntimeError(
-                      "Invalid GRAM price"
-                  )
-
-              print(
-                  "GRAM USD:",
-                  gram_usd
-              )
+              if gram and gram > 0:
+                  data["gramUsd"] = gram
+                  print("New GRAM:", gram)
 
           except Exception as e:
-              print(
-                  "GRAM failed:",
-                  e
-              )
+              print("GRAM ERROR:", e)
+              print("Keeping old GRAM")
 
-              print(
-                  "Keeping previous GRAM:",
-                  old_gram
-              )
-
-          # ---------------------------------------------------------
-          # APIFRAGMENT
-          # ---------------------------------------------------------
-
-          star_usd = old_star
-          premium = old_premium
-          fragment_ok = False
-
-          token = os.environ.get(
-              "APIFRAGMENT_TOKEN"
-          )
+          # -------------------------
+          # FRAGMENT API
+          # -------------------------
+          token = ( __import__("os").environ.get("APIFRAGMENT_TOKEN") or "" ).strip()
 
           if token:
-
-              print(
-                  "\nAPIFRAGMENT_TOKEN found."
-              )
-
-              fragment_headers = {
-                  "Authorization":
-                      "Bearer " + token
+              headers = {
+                  "Authorization": "Bearer " + token,
+                  "User-Agent": "DevilShop/1.0"
               }
 
-              # -----------------------------------------------------
-              # STARS
-              # -----------------------------------------------------
-
+              # Stars
               try:
-                  url = (
-                      FRAGMENT
-                      + "?product=stars"
-                      + "&quantity=1000"
+                  j = get_json(
+                      FRAGMENT + "?product=stars&quantity=1000",
+                      headers
                   )
 
-                  print(
-                      "Requesting Stars:",
-                      url
-                  )
+                  star = number(j.get("unit_usdt"))
 
-                  data = get_json(
-                      url,
-                      fragment_headers
-                  )
-
-                  if data.get("unit_usdt") is not None:
-
-                      star_usd = float(
-                          data["unit_usdt"]
-                      )
-
-                  elif data.get("price_usdt") is not None:
-
-                      star_usd = (
-                          float(
-                              data["price_usdt"]
-                          ) / 1000
-                      )
-
+                  if star and star > 0:
+                      data["starUsd"] = star
+                      print("New Star USD:", star)
                   else:
-                      raise RuntimeError(
-                          "Stars USD missing"
-                      )
-
-                  if star_usd <= 0:
-                      raise RuntimeError(
-                          "Invalid Stars USD"
-                      )
-
-                  fragment_ok = True
-
-                  print(
-                      "Stars USD:",
-                      star_usd
-                  )
+                      print("Stars value missing")
 
               except Exception as e:
-                  print(
-                      "Stars failed:",
-                      e
-                  )
+                  print("STARS ERROR:", e)
+                  print("Keeping old Stars")
 
-                  print(
-                      "Keeping old Stars:",
-                      old_star
-                  )
+              # Premium
+              premium = data.get("premium", [])
 
-              # -----------------------------------------------------
-              # PREMIUM
-              # -----------------------------------------------------
+              for item in premium:
+                  key = item.get("key", "")
 
-              new_premium = []
+                  months = {
+                      "prem3m": 3,
+                      "prem6m": 6,
+                      "prem1y": 12
+                  }.get(key)
 
-              for months, key, name in [
-                  (
-                      3,
-                      "prem3m",
-                      "پریمیوم 3 ماهه"
-                  ),
-                  (
-                      6,
-                      "prem6m",
-                      "پریمیوم 6 ماهه"
-                  ),
-                  (
-                      12,
-                      "prem1y",
-                      "پریمیوم 1 ساله"
-                  )
-              ]:
+                  if not months:
+                      continue
 
                   try:
-                      url = (
-                          FRAGMENT
-                          + "?product=premium"
-                          + f"&quantity={months}"
+                      j = get_json(
+                          FRAGMENT +
+                          f"?product=premium&quantity={months}",
+                          headers
                       )
 
-                      print(
-                          f"Requesting Premium {months}m:",
-                          url
-                      )
+                      price = number(j.get("price_usdt"))
 
-                      data = get_json(
-                          url,
-                          fragment_headers
-                      )
-
-                      value = data.get(
-                          "price_usdt"
-                      )
-
-                      if value is None:
-                          raise RuntimeError(
-                              "Premium USD missing"
-                          )
-
-                      value = float(value)
-
-                      if value <= 0:
-                          raise RuntimeError(
-                              "Invalid Premium USD"
-                          )
-
-                      new_premium.append({
-                          "key": key,
-                          "name": name,
-                          "usd": value
-                      })
-
-                      fragment_ok = True
-
-                      print(
-                          f"Premium {months}m USD:",
-                          value
-                      )
+                      if price and price > 0:
+                          item["usd"] = price
+                          print(key, "USD:", price)
+                      else:
+                          print(key, "value missing")
 
                   except Exception as e:
+                      print(key, "ERROR:", e)
+                      print("Keeping old", key)
 
-                      print(
-                          f"Premium {months}m failed:",
-                          e
-                      )
+              data["premium"] = premium
+              data["fragmentSource"] = "ApiFragment"
 
-                      old_item = next(
-                          (
-                              x for x in old_premium
-                              if x.get("key") == key
-                          ),
-                          None
-                      )
+          else:
+              print("APIFRAGMENT_TOKEN not found")
+              print("Keeping old Stars and Premium")
 
-                      if old_item:
+          # -------------------------
+          # SAVE
+          # -------------------------
+          data["updatedAt"] = datetime.now(timezone.utc).isoformat()
+          data["source"] = "TGJU + CoinGecko + Fragment"
+
+          with open(FILE, "w", encoding="utf-8") as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+
+          print("PRICE UPDATE SUCCESSFUL")
+          PY
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add data/prices.json
+
+          if git diff --cached --quiet; then
+            echo "No price changes."
+          else
+            git commit -m "Update prices"
+            git push
+          fi
