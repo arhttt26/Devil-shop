@@ -1,23 +1,25 @@
 {
   "usdToman": 235000,
-  "updatedAt": "2026-09-28T01:00:44.664457+00:00",
-  "source": "TGJU",
-  "starUsd": 0,
+  "gramUsd": 1.44,
+  "updatedAt": "2026-09-28T00:00:00+00:00",
+  "source": "TGJU + CoinGecko + Fragment",
+  "fragmentSource": "last-known",
+  "starUsd": 0.015,
   "premium": [
     {
       "key": "prem3m",
       "name": "پریمیوم 3 ماهه",
-      "usd": 0
+      "usd": 11.99
     },
     {
       "key": "prem6m",
       "name": "پریمیوم 6 ماهه",
-      "usd": 0
+      "usd": 15.99
     },
     {
       "key": "prem1y",
       "name": "پریمیوم 1 ساله",
-      "usd": 0
+      "usd": 28.99
     }
   ]
 }
