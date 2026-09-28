@@ -1,9 +1,9 @@
 {
-  "usdToman": 489,
-  "gramUsd": 1.57,
-  "updatedAt": "2026-09-28T23:15:46.065644+00:00",
+  "usdToman": 10085.0,
+  "gramUsd": 1.58,
+  "updatedAt": "2026-09-28T23:33:12.031065+00:00",
   "source": "TGJU + CoinGecko + Fragment",
-  "fragmentSource": "last-known",
+  "fragmentSource": "ApiFragment",
   "starUsd": 0.015,
   "premium": [
     {
