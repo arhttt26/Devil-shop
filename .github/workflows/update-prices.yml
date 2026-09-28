@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   update-prices:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
@@ -21,13 +21,9 @@ jobs:
 
       - name: Update prices
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
           APIFRAGMENT_TOKEN: ${{ secrets.APIFRAGMENT_TOKEN }}
-
         run: |
           python3 <<'PY'
-
           import json
           import os
           import re
@@ -35,224 +31,462 @@ jobs:
           import urllib.request
           import urllib.error
           from datetime import datetime, timezone
-          from collections import Counter
 
+          FILE = "data/prices.json"
 
-          # =========================================================
-          # CONFIG
-          # =========================================================
+          TGJU = "https://www.tgju.org/profile/price_dollar_rl"
 
-          PRICES_FILE = "data/prices.json"
-
-          TGJU_URL = (
-              "https://www.tgju.org/profile/price_dollar_rl"
-          )
-
-          GRAM_URL = (
+          GRAM = (
               "https://api.coingecko.com/api/v3/simple/price"
               "?ids=the-open-network&vs_currencies=usd"
           )
 
-          APIFRAGMENT_URL = (
-              "https://apifragment.online/price"
-          )
+          FRAGMENT = "https://apifragment.online/price"
 
-
-          # =========================================================
-          # HTTP HEADERS
-          # =========================================================
-
-          DEFAULT_HEADERS = {
-              "User-Agent": (
-                  "Mozilla/5.0 "
-                  "(Windows NT 10.0; Win64; x64) "
-                  "AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) "
-                  "Chrome/140 Safari/537.36"
-              ),
-              "Accept": (
-                  "application/json,"
-                  "text/html,"
-                  "application/xhtml+xml,"
-                  "*/*"
-              ),
-              "Accept-Language": "fa-IR,fa;q=0.9,en;q=0.8",
-              "Cache-Control": "no-cache",
-              "Pragma": "no-cache"
+          HEADERS = {
+              "User-Agent": "Mozilla/5.0",
+              "Accept": "application/json,text/html,*/*"
           }
 
-
-          # =========================================================
-          # HTTP FUNCTIONS
-          # =========================================================
-
-          def http_get(url, headers=None, timeout=30):
-
-              final_headers = dict(DEFAULT_HEADERS)
-
+          def get(url, headers=None, retries=3):
+              h = dict(HEADERS)
               if headers:
-                  final_headers.update(headers)
+                  h.update(headers)
 
-              request = urllib.request.Request(
-                  url,
-                  headers=final_headers,
-                  method="GET"
-              )
+              last = None
 
-              with urllib.request.urlopen(
-                  request,
-                  timeout=timeout
-              ) as response:
-
-                  return response.read().decode(
-                      "utf-8",
-                      errors="replace"
-                  )
-
-
-          def get_json(
-              url,
-              headers=None,
-              retries=3,
-              retry_delay=3
-          ):
-
-              last_error = None
-
-              for attempt in range(1, retries + 1):
-
+              for i in range(retries):
                   try:
-
-                      text = http_get(
+                      req = urllib.request.Request(
                           url,
-                          headers=headers
+                          headers=h,
+                          method="GET"
                       )
 
-                      if not text.strip():
-                          raise RuntimeError(
-                              "Empty response"
+                      with urllib.request.urlopen(
+                          req,
+                          timeout=30
+                      ) as r:
+                          return r.read().decode(
+                              "utf-8",
+                              errors="replace"
                           )
 
-                      return json.loads(text)
-
-                  except Exception as error:
-
-                      last_error = error
-
+                  except Exception as e:
+                      last = e
                       print(
                           f"Request failed "
-                          f"(attempt {attempt}/{retries}): "
-                          f"{error}"
+                          f"({i + 1}/{retries}): {e}"
                       )
 
-                      if attempt < retries:
-                          time.sleep(retry_delay)
+                      if i < retries - 1:
+                          time.sleep(3)
 
-              raise last_error
+              raise last
 
-
-          # =========================================================
-          # NUMBER HELPERS
-          # =========================================================
-
-          PERSIAN_DIGITS = str.maketrans(
-              "۰۱۲۳۴۵۶۷۸۹",
-              "0123456789"
-          )
-
+          def get_json(url, headers=None):
+              return json.loads(
+                  get(
+                      url,
+                      headers=headers
+                  )
+              )
 
           def clean_number(value):
-
-              if value is None:
-                  return None
-
               value = str(value)
 
               value = value.translate(
-                  PERSIAN_DIGITS
+                  str.maketrans(
+                      "۰۱۲۳۴۵۶۷۸۹",
+                      "0123456789"
+                  )
               )
 
-              value = value.replace(
-                  "٬",
-                  ""
-              )
-
-              value = value.replace(
-                  ",",
-                  ""
-              )
-
-              value = value.replace(
-                  " ",
-                  ""
-              )
-
-              value = value.replace(
-                  "\u200c",
-                  ""
-              )
+              value = value.replace(",", "")
+              value = value.replace("٬", "")
+              value = value.replace(" ", "")
+              value = value.replace("\u200c", "")
 
               return value
 
-
-          # =========================================================
-          # LOAD EXISTING PRICES
-          # =========================================================
-
-          if not os.path.exists(PRICES_FILE):
-
-              raise RuntimeError(
-                  f"{PRICES_FILE} does not exist"
-              )
-
+          # ---------------------------------------------------------
+          # LOAD EXISTING DATA
+          # ---------------------------------------------------------
 
           with open(
-              PRICES_FILE,
+              FILE,
               "r",
               encoding="utf-8"
-          ) as file:
+          ) as f:
+              prices = json.load(f)
 
-              prices = json.load(file)
-
-
-          old_usd_toman = prices.get(
-              "usdToman"
-          )
-
-          old_gram_usd = prices.get(
-              "gramUsd"
-          )
-
-          old_star_usd = prices.get(
+          old_usd = prices.get("usdToman")
+          old_gram = prices.get("gramUsd")
+          old_star = prices.get(
               "starUsd",
               0.015
           )
-
           old_premium = prices.get(
               "premium",
               []
           )
 
+          print("Old USD/Toman:", old_usd)
+          print("Old GRAM USD:", old_gram)
+          print("Old Stars USD:", old_star)
 
-          print("--------------------------------")
-          print("CURRENT SAVED PRICES")
-          print("--------------------------------")
+          # ---------------------------------------------------------
+          # USD FROM TGJU
+          # ---------------------------------------------------------
 
-          print(
-              "USD/Toman:",
-              old_usd_toman
+          usd_toman = old_usd
+
+          try:
+              print("\nFetching USD from TGJU...")
+
+              html = get(TGJU)
+
+              print(
+                  "TGJU page size:",
+                  len(html)
+              )
+
+              candidates = []
+
+              # Method 1:
+              # Search around price_dollar_rl
+              for match in re.finditer(
+                  r"price_dollar_rl",
+                  html,
+                  re.I
+              ):
+                  part = html[
+                      max(0, match.start() - 2000):
+                      match.start() + 5000
+                  ]
+
+                  nums = re.findall(
+                      r"[0-9۰-۹]{1,3}(?:[,٬][0-9۰-۹]{3})+",
+                      part
+                  )
+
+                  for n in nums:
+                      n = clean_number(n)
+
+                      try:
+                          value = int(n)
+                      except:
+                          continue
+
+                      if 100000 <= value <= 20000000:
+                          candidates.append(value)
+
+              # Method 2:
+              # Look for "نرخ فعلی"
+              for match in re.finditer(
+                  r"نرخ\s*فعلی",
+                  html,
+                  re.I
+              ):
+                  part = html[
+                      match.start():
+                      match.start() + 3000
+                  ]
+
+                  nums = re.findall(
+                      r"[0-9۰-۹]{1,3}(?:[,٬][0-9۰-۹]{3})+",
+                      part
+                  )
+
+                  for n in nums:
+                      n = clean_number(n)
+
+                      try:
+                          value = int(n)
+                      except:
+                          continue
+
+                      if 100000 <= value <= 20000000:
+                          candidates.append(value)
+
+              # Remove duplicates
+              candidates = list(
+                  dict.fromkeys(candidates)
+              )
+
+              print(
+                  "TGJU candidates:",
+                  candidates[:20]
+              )
+
+              if not candidates:
+                  raise RuntimeError(
+                      "No valid USD value found"
+                  )
+
+              # Prefer a value close to the previous
+              # price if available.
+              if old_usd:
+                  old_rial = old_usd * 10
+
+                  candidates.sort(
+                      key=lambda x: abs(
+                          x - old_rial
+                      )
+                  )
+
+                  usd_rial = candidates[0]
+
+              else:
+                  usd_rial = candidates[0]
+
+              usd_toman = round(
+                  usd_rial / 10
+              )
+
+              # Safety check.
+              if not (
+                  10000 <= usd_toman <= 2000000
+              ):
+                  raise RuntimeError(
+                      f"Invalid USD/Toman: {usd_toman}"
+                  )
+
+              print(
+                  "USD Rial:",
+                  usd_rial
+              )
+
+              print(
+                  "USD Toman:",
+                  usd_toman
+              )
+
+          except Exception as e:
+              print(
+                  "TGJU failed:",
+                  e
+              )
+
+              print(
+                  "Keeping previous USD/Toman:",
+                  old_usd
+              )
+
+          # ---------------------------------------------------------
+          # GRAM / TONCOIN
+          # ---------------------------------------------------------
+
+          gram_usd = old_gram
+
+          try:
+              print("\nFetching GRAM...")
+
+              data = get_json(GRAM)
+
+              value = (
+                  data
+                  .get("the-open-network", {})
+                  .get("usd")
+              )
+
+              if value is None:
+                  raise RuntimeError(
+                      "GRAM price missing"
+                  )
+
+              gram_usd = float(value)
+
+              if gram_usd <= 0:
+                  raise RuntimeError(
+                      "Invalid GRAM price"
+                  )
+
+              print(
+                  "GRAM USD:",
+                  gram_usd
+              )
+
+          except Exception as e:
+              print(
+                  "GRAM failed:",
+                  e
+              )
+
+              print(
+                  "Keeping previous GRAM:",
+                  old_gram
+              )
+
+          # ---------------------------------------------------------
+          # APIFRAGMENT
+          # ---------------------------------------------------------
+
+          star_usd = old_star
+          premium = old_premium
+          fragment_ok = False
+
+          token = os.environ.get(
+              "APIFRAGMENT_TOKEN"
           )
 
-          print(
-              "GRAM USD:",
-              old_gram_usd
-          )
+          if token:
 
-          print(
-              "Stars USD:",
-              old_star_usd
-          )
+              print(
+                  "\nAPIFRAGMENT_TOKEN found."
+              )
 
-          print(
-              "Premium:",
-             
+              fragment_headers = {
+                  "Authorization":
+                      "Bearer " + token
+              }
+
+              # -----------------------------------------------------
+              # STARS
+              # -----------------------------------------------------
+
+              try:
+                  url = (
+                      FRAGMENT
+                      + "?product=stars"
+                      + "&quantity=1000"
+                  )
+
+                  print(
+                      "Requesting Stars:",
+                      url
+                  )
+
+                  data = get_json(
+                      url,
+                      fragment_headers
+                  )
+
+                  if data.get("unit_usdt") is not None:
+
+                      star_usd = float(
+                          data["unit_usdt"]
+                      )
+
+                  elif data.get("price_usdt") is not None:
+
+                      star_usd = (
+                          float(
+                              data["price_usdt"]
+                          ) / 1000
+                      )
+
+                  else:
+                      raise RuntimeError(
+                          "Stars USD missing"
+                      )
+
+                  if star_usd <= 0:
+                      raise RuntimeError(
+                          "Invalid Stars USD"
+                      )
+
+                  fragment_ok = True
+
+                  print(
+                      "Stars USD:",
+                      star_usd
+                  )
+
+              except Exception as e:
+                  print(
+                      "Stars failed:",
+                      e
+                  )
+
+                  print(
+                      "Keeping old Stars:",
+                      old_star
+                  )
+
+              # -----------------------------------------------------
+              # PREMIUM
+              # -----------------------------------------------------
+
+              new_premium = []
+
+              for months, key, name in [
+                  (
+                      3,
+                      "prem3m",
+                      "پریمیوم 3 ماهه"
+                  ),
+                  (
+                      6,
+                      "prem6m",
+                      "پریمیوم 6 ماهه"
+                  ),
+                  (
+                      12,
+                      "prem1y",
+                      "پریمیوم 1 ساله"
+                  )
+              ]:
+
+                  try:
+                      url = (
+                          FRAGMENT
+                          + "?product=premium"
+                          + f"&quantity={months}"
+                      )
+
+                      print(
+                          f"Requesting Premium {months}m:",
+                          url
+                      )
+
+                      data = get_json(
+                          url,
+                          fragment_headers
+                      )
+
+                      value = data.get(
+                          "price_usdt"
+                      )
+
+                      if value is None:
+                          raise RuntimeError(
+                              "Premium USD missing"
+                          )
+
+                      value = float(value)
+
+                      if value <= 0:
+                          raise RuntimeError(
+                              "Invalid Premium USD"
+                          )
+
+                      new_premium.append({
+                          "key": key,
+                          "name": name,
+                          "usd": value
+                      })
+
+                      fragment_ok = True
+
+                      print(
+                          f"Premium {months}m USD:",
+                          value
+                      )
+
+                  except Exception as e:
+
+                      print(
+                          f"Premium {months}m failed:",
+                          e
+                      )
+
+                      old_item = next(
+                          (
+                              x for x in old_premium
+                              if x.get("key") == key
+                          ),
+                          None
+                      )
+
+                      if old_item:
