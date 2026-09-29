@@ -1,7 +1,7 @@
 {
   "usdToman": 10750,
-  "gramUsd": 1.57,
-  "updatedAt": "2026-09-29T00:03:34+00:00",
+  "gramUsd": 1.54,
+  "updatedAt": "2026-09-29T03:10:08+00:00",
   "source": "TGJU + CoinGecko + Fragment",
   "fragmentSource": "ApiFragment",
   "starUsd": 0.015,
@@ -29,28 +29,28 @@
     },
     "gram": {
       "stale": false,
-      "updatedAt": "2026-09-28T23:51:23+00:00"
+      "updatedAt": "2026-09-29T03:10:08+00:00"
     },
     "stars": {
       "failedSince": "2026-09-28T23:51:23+00:00",
       "error": "HTTP Error 500: Internal Server Error",
-      "stale": false
+      "stale": true
     },
     "prem3m": {
       "failedSince": "2026-09-28T23:51:23+00:00",
       "error": "HTTP Error 500: Internal Server Error",
-      "stale": false
+      "stale": true
     },
     "prem6m": {
       "failedSince": "2026-09-28T23:51:23+00:00",
       "error": "HTTP Error 500: Internal Server Error",
-      "stale": false
+      "stale": true
     },
     "prem1y": {
       "failedSince": "2026-09-28T23:51:23+00:00",
       "error": "HTTP Error 500: Internal Server Error",
-      "stale": false
+      "stale": true
     }
   },
-  "anyStale": false
+  "anyStale": true
 }
