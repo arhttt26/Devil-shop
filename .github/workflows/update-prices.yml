@@ -121,7 +121,7 @@ jobs:
                   raise RuntimeError("value missing or invalid")
               if old and old > 0 and abs(new - old) / old > MAX_CHANGE:
                   raise RuntimeError(f"suspicious change {old} -> {new}")
-              return new
+              return round(new, 6)
 
           # ---------------------------------------------------------
           # LOAD EXISTING DATA
